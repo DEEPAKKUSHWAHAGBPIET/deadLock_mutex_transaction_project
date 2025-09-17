@@ -113,13 +113,12 @@ char *txn_read(Transaction *t, const char *key) {
     if (!t || t->status != TXN_ACTIVE) return NULL;
     int idx = get_or_create_key(key);
 
-    // 1) Check uncommitted local writes
     WriteEntry *w = find_local_write(t, idx);
     if (w) {
         return strdup(w->value);
     }
 
-    // 2) Otherwise find newest committed version with commit_ts <= t->start_ts
+   
     KeyEntry *ke = &store[idx];
     pthread_mutex_lock(&ke->mtx);
     Version *v = ke->versions;
@@ -127,7 +126,6 @@ char *txn_read(Transaction *t, const char *key) {
     char *res = NULL;
     if (v) res = strdup(v->value);
     else {
-        // no visible version -> return empty string or NULL. We'll return empty string for demo.
         res = strdup("");
     }
     pthread_mutex_unlock(&ke->mtx);
@@ -161,7 +159,6 @@ static int lock_write_keys_sorted(Transaction *t, int locked_idxs[], int *locked
         }
     }
     if (kcount == 0) { *locked_count = 0; return 0; }
-    // sort keys ascending (simple selection sort for small counts)
     for (int i=0;i<kcount;i++) {
         for (int j=i+1;j<kcount;j++) {
             if (keys[j] < keys[i]) {

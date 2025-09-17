@@ -13,6 +13,12 @@
 typedef unsigned long ts_t;
 typedef int txnid_t;
 
+typedef struct Version {
+    char value[MAX_VALUE_LEN];
+    ts_t commit_ts;            // when version was committed
+    struct Version *next;      // older version
+} Version;
+
 typedef struct KeyLock {
     pthread_mutex_t mtx;
     pthread_cond_t  cv;
@@ -22,6 +28,7 @@ typedef struct KeyLock {
 typedef struct KeyEntry {
     char key[MAX_KEY_LEN];
     char value[MAX_VALUE_LEN];
+    Version *versions;
     KeyLock lock;
     int used;
 } KeyEntry;
