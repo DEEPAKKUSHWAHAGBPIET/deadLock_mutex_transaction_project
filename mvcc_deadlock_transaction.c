@@ -191,10 +191,9 @@ int txn_commit(Transaction *t) {
         return -1;
     }
 
-    // If no writes, just commit (read-only txn)
     if (!t->writes) {
         pthread_mutex_lock(&ts_mtx);
-        // assign a commit_ts? read-only txns can have none, but we'll increment global_ts for monotonicity
+
         ts_t my_commit_ts = global_ts++;
         (void)my_commit_ts;
         pthread_mutex_unlock(&ts_mtx);
@@ -204,12 +203,10 @@ int txn_commit(Transaction *t) {
         return 0;
     }
 
-    // Lock all keys we will write, in ascending order to avoid deadlocks
     int locked_idxs[MAX_KEYS];
     int locked_count = 0;
     lock_write_keys_sorted(t, locked_idxs, &locked_count);
 
-    // Conflict detection: for each key, if newest committed version has commit_ts > t->start_ts => abort
     int conflict = 0;
     for (WriteEntry *w = t->writes; w; w = w->next) {
         KeyEntry *ke = &store[w->key_idx];
@@ -221,9 +218,8 @@ int txn_commit(Transaction *t) {
     }
 
     if (conflict) {
-        // Unlock keys
         unlock_locked_idxs(locked_idxs, locked_count);
-        // free write entries
+        
         WriteEntry *we = t->writes;
         while (we) { WriteEntry *n=we->next; free(we); we=n; }
         t->writes = NULL;
@@ -233,7 +229,6 @@ int txn_commit(Transaction *t) {
         return -1;
     }
 
-    // No conflicts: install new versions with a new commit_ts
     pthread_mutex_lock(&ts_mtx);
     ts_t commit_ts = global_ts++;
     pthread_mutex_unlock(&ts_mtx);
@@ -248,7 +243,6 @@ int txn_commit(Transaction *t) {
         ke->versions = v;
     }
 
-    // cleanup write buffer
     WriteEntry *we = t->writes;
     while (we) { WriteEntry *n=we->next; free(we); we=n; }
     t->writes = NULL;
@@ -265,7 +259,7 @@ void txn_explicit_abort(Transaction *t) {
     if (!t) return;
     pthread_mutex_lock(&t->mtx);
     if (t->status != TXN_ACTIVE) { pthread_mutex_unlock(&t->mtx); return; }
-    // free write entries
+
     WriteEntry *we = t->writes;
     while (we) { WriteEntry *n=we->next; free(we); we=n; }
     t->writes = NULL;
@@ -275,14 +269,12 @@ void txn_explicit_abort(Transaction *t) {
 }
 
 void *txn_demo_reader_writer(void *arg) {
-    // Reader/Writer txn: read A first (snapshot), then later write A
     Transaction *t = create_txn();
     printf("[TXN %d] Started (ts=%lu) - will read A, sleep, then write A\n", t->id, t->start_ts);
     char *before = txn_read(t, "A");
     printf("[TXN %d] Read A before = '%s'\n", t->id, before ? before : "(null)");
     free(before);
     sleep(2);
-    // now write
     if (txn_write(t, "A", "T1_A") != 0) { printf("[TXN %d] Aborted while writing A\n", t->id); return NULL; }
     if (txn_commit(t) != 0) { printf("[TXN %d] Commit failed\n", t->id); }
     return NULL;
@@ -291,7 +283,7 @@ void *txn_demo_reader_writer(void *arg) {
 void *txn_demo_competing_writer(void *arg) {
     Transaction *t = create_txn();
     printf("[TXN %d] Started (ts=%lu) - will sleep then write A\n", t->id, t->start_ts);
-    sleep(1); // ensure start_ts is between the other txn's start and commit
+    sleep(1); 
     if (txn_write(t, "A", "T2_A") != 0) { printf("[TXN %d] Aborted while writing A\n", t->id); return NULL; }
     if (txn_commit(t) != 0) { printf("[TXN %d] Commit failed\n", t->id); }
     return NULL;
@@ -304,7 +296,7 @@ int main() {
 
     pthread_t th1, th2;
     pthread_create(&th1, NULL, txn_demo_reader_writer, NULL);
-    usleep(200000); // 200ms
+    usleep(200000); 
     pthread_create(&th2, NULL, txn_demo_competing_writer, NULL);
 
     pthread_join(th1, NULL);
